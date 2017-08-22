@@ -27,7 +27,7 @@
 
 Name:		clang
 Version:	4.0.1
-Release:	4%{?dist}
+Release:	5%{?dist}
 Summary:	A C language family front-end for LLVM
 
 License:	NCSA
@@ -64,7 +64,11 @@ BuildRequires: zlib-devel
 BuildRequires: tcl
 BuildRequires: python-virtualenv
 BuildRequires: libstdc++-static
+%if 0%{?with_python3}
 BuildRequires: python3-sphinx
+%else
+BuildRequires: python-sphinx
+%endif
 
 
 Requires:	%{name}-libs%{?_isa} = %{version}-%{release}
@@ -240,6 +244,9 @@ make %{?_smp_mflags} check || :
 %{_bindir}/modularize
 
 %changelog
+* Tue Aug 22 2017 Jajauma's Packages <jajauma@yandex.ru> - 4.0.1-5
+- Build with python-sphinx on RHEL
+
 * Sun Aug 06 2017 Björn Esser <besser82@fedoraproject.org> - 4.0.1-4
 - Rebuilt for AutoReq cmake-filesystem
 

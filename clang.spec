@@ -5,12 +5,13 @@
 	%{_bindir}/clang-query \
 	%{_bindir}/clang-reorder-fields \
 	%{_bindir}/clang-rename \
-	%{_bindir}/clang-tidy
+	%{_bindir}/clang-tidy \
+	%{_bindir}/clangd
 
 %global clang_binaries \
 	%{_bindir}/clang \
 	%{_bindir}/clang++ \
-	%{_bindir}/clang-4.0 \
+	%{_bindir}/clang-5.0 \
 	%{_bindir}/clang-check \
 	%{_bindir}/clang-cl \
 	%{_bindir}/clang-cpp \
@@ -26,8 +27,8 @@
 %endif
 
 Name:		clang
-Version:	4.0.1
-Release:	5%{?dist}
+Version:	5.0.0
+Release:	1%{?dist}
 Summary:	A C language family front-end for LLVM
 
 License:	NCSA
@@ -39,9 +40,6 @@ Source2:	http://llvm.org/releases/%{version}/test-suite-%{version}.src.tar.xz
 Source100:	clang-config.h
 
 # This patch is required when the test suite is using python-lit 0.5.0.
-Patch1:		0001-litsupport-Add-compatibility-cludge-so-it-still-work.patch
-Patch2:		0001-docs-Fix-Sphinx-detection-with-out-of-tree-builds.patch
-Patch3:		0001-test-Remove-FileCheck-not-count-dependencies.patch
 Patch4:		0001-lit.cfg-Remove-substitutions-for-clang-llvm-tools.patch
 
 BuildRequires:	cmake
@@ -129,13 +127,9 @@ A set of extra tools built using Clang's tooling API.
 
 %prep
 %setup -T -q -b 1 -n clang-tools-extra-%{version}.src
-%patch3 -p1 -b .lit-dep-fix
-
 %setup -T -q -b 2 -n test-suite-%{version}.src
-%patch1 -p1 -b .lit-fix
 
 %setup -q -n cfe-%{version}.src
-%patch2 -p1 -b .docs-fix
 %patch4 -p1 -b .lit-tools-fix
 
 mv ../clang-tools-extra-%{version}.src tools/extra
@@ -193,6 +187,8 @@ rm -vf %{buildroot}%{_datadir}/clang/clang-rename.el
 rm -vf %{buildroot}%{_datadir}/clang/clang-rename.py
 # remove diff reformatter
 rm -vf %{buildroot}%{_datadir}/clang/clang-format-diff.py*
+# remove completion script
+rm -vf %{buildroot}%{_datadir}/clang/bash-autocomplete.sh
 
 # TODO: Package html docs
 rm -Rvf %{buildroot}%{_pkgdocdir}
@@ -231,7 +227,6 @@ make %{?_smp_mflags} check || :
 %files analyzer
 %{_bindir}/scan-view
 %{_bindir}/scan-build
-%{_bindir}/scan-build
 %{_libexecdir}/ccc-analyzer
 %{_libexecdir}/c++-analyzer
 %{_datadir}/scan-view/
@@ -244,6 +239,9 @@ make %{?_smp_mflags} check || :
 %{_bindir}/modularize
 
 %changelog
+* Fri Sep 08 2017 Jajauma's Packages <jajauma@yandex.ru> - 5.0.0-1
+- Update to latest upstream release
+
 * Tue Aug 22 2017 Jajauma's Packages <jajauma@yandex.ru> - 4.0.1-5
 - Build with python-sphinx on RHEL
 

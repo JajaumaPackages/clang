@@ -219,7 +219,7 @@ rm -vf %{buildroot}%{_datadir}/clang/clang-rename.py
 rm -vf %{buildroot}%{_datadir}/clang/clang-format-diff.py*
 
 # TODO: Package html docs
-rm -Rvf %{buildroot}%{_pkgdocdir}
+rm -Rvf %{buildroot}%{_docdir}/%{name}
 
 # TODO: What are the Fedora guidelines for packaging bash autocomplete files?
 rm -vf %{buildroot}%{_datadir}/clang/bash-autocomplete.sh
@@ -278,6 +278,7 @@ make %{?_smp_mflags} check || :
 %changelog
 * Tue Nov 14 2017 Jajauma's Packages <jajauma@yandex.ru> - 5.0.0-2
 - Synchronize package with Fedora
+- Workaround _pkgdocdir breakage in RHEL7.4
 
 * Fri Sep 08 2017 Jajauma's Packages <jajauma@yandex.ru> - 5.0.0-1
 - Update to latest upstream release

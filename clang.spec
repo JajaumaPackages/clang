@@ -1,24 +1,27 @@
+%global maj_ver 5
+%global min_ver 0
+%global patch_ver 0
+
 %global clang_tools_binaries \
+	%{_bindir}/clangd \
 	%{_bindir}/clang-apply-replacements \
 	%{_bindir}/clang-change-namespace \
 	%{_bindir}/clang-include-fixer \
 	%{_bindir}/clang-query \
 	%{_bindir}/clang-reorder-fields \
 	%{_bindir}/clang-rename \
-	%{_bindir}/clang-tidy \
-	%{_bindir}/clangd
+	%{_bindir}/clang-tidy
 
 %global clang_binaries \
 	%{_bindir}/clang \
 	%{_bindir}/clang++ \
-	%{_bindir}/clang-5.0 \
+	%{_bindir}/clang-%{maj_ver}.%{min_ver} \
 	%{_bindir}/clang-check \
 	%{_bindir}/clang-cl \
 	%{_bindir}/clang-cpp \
 	%{_bindir}/clang-format \
 	%{_bindir}/clang-import-test \
-	%{_bindir}/clang-offload-bundler \
-	%{_bindir}/git-clang-format
+	%{_bindir}/clang-offload-bundler
 
 %if 0%{?fedora}
 %bcond_without python3
@@ -27,8 +30,8 @@
 %endif
 
 Name:		clang
-Version:	5.0.0
-Release:	1%{?dist}
+Version:	%{maj_ver}.%{min_ver}.%{patch_ver}
+Release:	2%{?dist}
 Summary:	A C language family front-end for LLVM
 
 License:	NCSA
@@ -39,7 +42,6 @@ Source2:	http://llvm.org/releases/%{version}/test-suite-%{version}.src.tar.xz
 
 Source100:	clang-config.h
 
-# This patch is required when the test suite is using python-lit 0.5.0.
 Patch4:		0001-lit.cfg-Remove-substitutions-for-clang-llvm-tools.patch
 
 BuildRequires:	cmake
@@ -98,6 +100,8 @@ Runtime library for clang.
 %package devel
 Summary: Development header files for clang.
 Requires: %{name}%{?_isa} = %{version}-%{release}
+# The clang CMake files reference tools from clang-tools-extra.
+Requires: %{name}-tools-extra%{?_isa} = %{version}-%{release}
 
 %description devel
 Development header files for clang.
@@ -120,13 +124,34 @@ intended to run in tandem with a build of a project or code base.
 %package tools-extra
 Summary: Extra tools for clang
 Requires: llvm-libs%{?_isa} = %{version}
-Requires: clang-libs%{?_isa} = %{version}
+Requires: %{name}-libs%{?_isa} = %{version}-%{release}
 
 %description tools-extra
 A set of extra tools built using Clang's tooling API.
 
+# Put git-clang-format in its own package, because it Requires git and python2
+# and we don't want to force users to install all those dependenices if they
+# just want clang.
+%package -n git-clang-format
+Summary: clang-format integration for git
+Requires: %{name}%{?_isa} = %{version}-%{release}
+Requires: git
+Requires: python2
+
+%description -n git-clang-format
+clang-format integration for git.
+
+%package -n python2-clang
+Summary: Python2 bindings for clang
+Requires: %{name}-libs%{?_isa} = %{version}-%{release}
+Requires: python2
+%description -n python2-clang
+%{summary}.
+
+
 %prep
 %setup -T -q -b 1 -n clang-tools-extra-%{version}.src
+
 %setup -T -q -b 2 -n test-suite-%{version}.src
 
 %setup -q -n cfe-%{version}.src
@@ -165,8 +190,13 @@ cd _build
 make %{?_smp_mflags}
 
 %install
-cd _build
-make install DESTDIR=%{buildroot}
+make install DESTDIR=%{buildroot} -C _build
+
+sed -i -e 's~#!/usr/bin/env python~#!%{_bindir}/python2~' %{buildroot}%{_bindir}/git-clang-format
+
+# install clang python bindings
+mkdir -p %{buildroot}%{python2_sitelib}/clang/
+install -p -m644 bindings/python/clang/* %{buildroot}%{python2_sitelib}/clang/
 
 # multilib fix
 mv -v %{buildroot}%{_includedir}/clang/Config/config{,-%{__isa_bits}}.h
@@ -187,11 +217,12 @@ rm -vf %{buildroot}%{_datadir}/clang/clang-rename.el
 rm -vf %{buildroot}%{_datadir}/clang/clang-rename.py
 # remove diff reformatter
 rm -vf %{buildroot}%{_datadir}/clang/clang-format-diff.py*
-# remove completion script
-rm -vf %{buildroot}%{_datadir}/clang/bash-autocomplete.sh
 
 # TODO: Package html docs
 rm -Rvf %{buildroot}%{_pkgdocdir}
+
+# TODO: What are the Fedora guidelines for packaging bash autocomplete files?
+rm -vf %{buildroot}%{_datadir}/clang/bash-autocomplete.sh
 
 %check
 # requires lit.py from LLVM utilities
@@ -238,7 +269,16 @@ make %{?_smp_mflags} check || :
 %{_bindir}/find-all-symbols
 %{_bindir}/modularize
 
+%files -n git-clang-format
+%{_bindir}/git-clang-format
+
+%files -n python2-clang
+%{python2_sitelib}/clang/
+
 %changelog
+* Tue Nov 14 2017 Jajauma's Packages <jajauma@yandex.ru> - 5.0.0-2
+- Synchronize package with Fedora
+
 * Fri Sep 08 2017 Jajauma's Packages <jajauma@yandex.ru> - 5.0.0-1
 - Update to latest upstream release
 

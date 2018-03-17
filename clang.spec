@@ -1,4 +1,4 @@
-%global maj_ver 5
+%global maj_ver 6
 %global min_ver 0
 %global patch_ver 0
 
@@ -8,6 +8,7 @@
 	%{_bindir}/clang-change-namespace \
 	%{_bindir}/clang-include-fixer \
 	%{_bindir}/clang-query \
+	%{_bindir}/clang-refactor \
 	%{_bindir}/clang-reorder-fields \
 	%{_bindir}/clang-rename \
 	%{_bindir}/clang-tidy
@@ -20,14 +21,19 @@
 	%{_bindir}/clang-cl \
 	%{_bindir}/clang-cpp \
 	%{_bindir}/clang-format \
+	%{_bindir}/clang-func-mapping \
 	%{_bindir}/clang-import-test \
 	%{_bindir}/clang-offload-bundler
 
-%if 0%{?fedora}
+%if 0%{?fedora} || 0%{?rhel} > 7
 %bcond_without python3
 %else
 %bcond_with python3
 %endif
+
+%global clang_srcdir cfe-%{version}%{?rc_ver:rc%{rc_ver}}.src
+%global clang_tools_srcdir clang-tools-extra-%{version}%{?rc_ver:rc%{rc_ver}}.src
+%global test_suite_srcdir test-suite-%{version}%{?rc_ver:rc%{rc_ver}}.src
 
 Name:		clang
 Version:	%{maj_ver}.%{min_ver}.%{patch_ver}
@@ -36,13 +42,14 @@ Summary:	A C language family front-end for LLVM
 
 License:	NCSA
 URL:		http://llvm.org
-Source0:	http://llvm.org/releases/%{version}/cfe-%{version}.src.tar.xz
-Source1:	http://llvm.org/releases/%{version}/clang-tools-extra-%{version}.src.tar.xz
-Source2:	http://llvm.org/releases/%{version}/test-suite-%{version}.src.tar.xz
+Source0:	http://llvm.org/releases/%{version}/%{clang_srcdir}.tar.xz
+Source1:	http://llvm.org/releases/%{version}/%{clang_tools_srcdir}.tar.xz
+Source2:	http://llvm.org/releases/%{version}/%{test_suite_srcdir}.tar.xz
 
 Source100:	clang-config.h
 
-Patch4:		0001-lit.cfg-Remove-substitutions-for-clang-llvm-tools.patch
+Patch0:		0001-lit.cfg-Add-hack-so-lit-can-find-not-and-FileCheck.patch
+Patch1:		0001-GCC-compatibility-Ignore-fstack-clash-protection.patch
 
 BuildRequires:	cmake
 BuildRequires:	llvm-devel = %{version}
@@ -52,17 +59,28 @@ BuildRequires:	libxml2-devel
 BuildRequires:  llvm-static = %{version}
 BuildRequires:  perl-generators
 BuildRequires:  ncurses-devel
+# According to https://fedoraproject.org/wiki/Packaging:Emacs a package
+# should BuildRequires: emacs if it packages emacs integration files.
+BuildRequires:	emacs
 
 # These build dependencies are required for the test suite.
 %if %with python3
+# The testsuite uses /usr/bin/lit which is part of the python3-lit package.
 BuildRequires:  python3-lit
-%else
-BuildRequires:  python2-lit
 %endif
+
+# make check-clang passes LLVM_EXTERNAL_LIT as an argument to
+# /usr/bin/python2, so we must have the python2 version of lit.
+# FIXME: We should find a way to not depend on python2-lit.
+BuildRequires:  python2-lit
 
 BuildRequires: zlib-devel
 BuildRequires: tcl
+%if 0%{?with_python3}
+BuildRequires: python2-virtualenv
+%else
 BuildRequires: python-virtualenv
+%endif
 BuildRequires: libstdc++-static
 %if 0%{?with_python3}
 BuildRequires: python3-sphinx
@@ -79,6 +97,9 @@ Requires:	%{name}-libs%{?_isa} = %{version}-%{release}
 Requires:	libstdc++-devel
 Requires:	gcc-c++
 
+Requires: emacs-filesystem
+
+Provides: clang(major) = %{maj_ver}
 
 %description
 clang: noun
@@ -92,7 +113,10 @@ as libraries and designed to be loosely-coupled and extensible.
 
 %package libs
 Summary: Runtime library for clang
-Requires: compiler-rt%{?_isa} >= %{version}
+%if 0%{?fedora} || 0%{?rhel} > 7
+Recommends: compiler-rt%{?_isa} >= %{version}
+Recommends: libomp%{_isa} = %{version}
+%endif
 
 %description libs
 Runtime library for clang.
@@ -113,7 +137,7 @@ BuildArch:	noarch
 Requires:	%{name} = %{version}-%{release}
 # not picked up automatically since files are currently not installed in
 # standard Python hierarchies yet
-Requires:	python
+Requires:	python2
 
 %description analyzer
 The Clang Static Analyzer consists of both a source code analysis
@@ -123,8 +147,8 @@ intended to run in tandem with a build of a project or code base.
 
 %package tools-extra
 Summary: Extra tools for clang
-Requires: llvm-libs%{?_isa} = %{version}
 Requires: %{name}-libs%{?_isa} = %{version}-%{release}
+Requires: emacs-filesystem
 
 %description tools-extra
 A set of extra tools built using Clang's tooling API.
@@ -150,16 +174,24 @@ Requires: python2
 
 
 %prep
-%setup -T -q -b 1 -n clang-tools-extra-%{version}.src
+%setup -T -q -b 1 -n %{clang_tools_srcdir}
 
-%setup -T -q -b 2 -n test-suite-%{version}.src
+%setup -T -q -b 2 -n %{test_suite_srcdir}
 
-%setup -q -n cfe-%{version}.src
-%patch4 -p1 -b .lit-tools-fix
+%setup -q -n %{clang_srcdir}
+%patch0 -p1 -b .lit-search-path
+%patch1 -p1 -b .fstack-clash-protection
 
-mv ../clang-tools-extra-%{version}.src tools/extra
+mv ../%{clang_tools_srcdir} tools/extra
 
 %build
+
+%if 0%{?__isa_bits} == 64
+sed -i 's/\@FEDORA_LLVM_LIB_SUFFIX\@/64/g' test/lit.cfg.py
+%else
+sed -i 's/\@FEDORA_LLVM_LIB_SUFFIX\@//g' test/lit.cfg.py
+%endif
+
 mkdir -p _build
 cd _build
 %cmake .. \
@@ -178,6 +210,7 @@ cd _build
 	-DLLVM_BUILD_DOCS=ON \
 	-DLLVM_ENABLE_SPHINX=ON \
 	-DSPHINX_WARNINGS_AS_ERRORS=OFF \
+	-DLLVM_EXTERNAL_LIT=%{python2_sitelib}/lit/run.py \
 	\
 	-DCLANG_BUILD_EXAMPLES:BOOL=OFF \
 %if 0%{?__isa_bits} == 64
@@ -202,24 +235,26 @@ install -p -m644 bindings/python/clang/* %{buildroot}%{python2_sitelib}/clang/
 mv -v %{buildroot}%{_includedir}/clang/Config/config{,-%{__isa_bits}}.h
 install -m 0644 %{SOURCE100} %{buildroot}%{_includedir}/clang/Config/config.h
 
+# Move emacs integration files to the correct directory
+mkdir -p %{buildroot}%{_emacs_sitestartdir}
+for f in clang-format.el clang-rename.el clang-include-fixer.el; do
+mv %{buildroot}{%{_datadir}/clang,%{_emacs_sitestartdir}}/$f
+done
+
+#Fix python shebang
+for f in clang-tidy-diff.py clang-format-diff.py  run-clang-tidy.py run-find-all-symbols.py; do
+	sed -i -e '1{\@^#!/usr/bin/env python@d}' %{buildroot}%{_datadir}/clang/$f
+done
+
 # remove editor integrations (bbedit, sublime, emacs, vim)
 rm -vf %{buildroot}%{_datadir}/clang/clang-format-bbedit.applescript
 rm -vf %{buildroot}%{_datadir}/clang/clang-format-sublime.py*
-rm -vf %{buildroot}%{_datadir}/clang/clang-format.el
-rm -vf %{buildroot}%{_datadir}/clang/clang-format.py*
-# clang-tools-extra
-rm -vf %{buildroot}%{_datadir}/clang/clang-include-fixer.py
-rm -vf %{buildroot}%{_datadir}/clang/clang-tidy-diff.py
-rm -vf %{buildroot}%{_datadir}/clang/run-clang-tidy.py
-rm -vf %{buildroot}%{_datadir}/clang/run-find-all-symbols.py
-rm -vf %{buildroot}%{_datadir}/clang/clang-include-fixer.el
-rm -vf %{buildroot}%{_datadir}/clang/clang-rename.el
-rm -vf %{buildroot}%{_datadir}/clang/clang-rename.py
-# remove diff reformatter
-rm -vf %{buildroot}%{_datadir}/clang/clang-format-diff.py*
 
 # TODO: Package html docs
 rm -Rvf %{buildroot}%{_docdir}/%{name}
+
+# TODO: What are the Fedora guidelines for packaging bash autocomplete files?
+rm -vf %{buildroot}%{_datadir}/clang/bash-autocomplete.sh
 
 # TODO: What are the Fedora guidelines for packaging bash autocomplete files?
 rm -vf %{buildroot}%{_datadir}/clang/bash-autocomplete.sh
@@ -229,8 +264,8 @@ rm -vf %{buildroot}%{_datadir}/clang/bash-autocomplete.sh
 cd _build
 PATH=%{_libdir}/llvm:$PATH make check-clang
 
-mkdir -p %{_builddir}/test-suite-%{version}.src/_build
-cd %{_builddir}/test-suite-%{version}.src/_build
+mkdir -p %{_builddir}/%{test_suite_srcdir}/_build
+cd %{_builddir}/%{test_suite_srcdir}/_build
 
 # FIXME: Using the cmake macro adds -Werror=format-security to the C/CXX flags,
 # which causes the test suite to fail to build.
@@ -244,6 +279,9 @@ make %{?_smp_mflags} check || :
 %{clang_binaries}
 %{_bindir}/c-index-test
 %{_mandir}/man1/clang.1.gz
+%{_emacs_sitestartdir}/clang-format.el
+%{_datadir}/clang/clang-format.py*
+%{_datadir}/clang/clang-format-diff.py*
 
 %files libs
 %{_libdir}/*.so.*
@@ -268,6 +306,19 @@ make %{?_smp_mflags} check || :
 %{clang_tools_binaries}
 %{_bindir}/find-all-symbols
 %{_bindir}/modularize
+%{_emacs_sitestartdir}/clang-rename.el
+%{_emacs_sitestartdir}/clang-include-fixer.el
+%{_datadir}/clang/clang-include-fixer.py*
+%{_datadir}/clang/clang-tidy-diff.py*
+%{_datadir}/clang/run-clang-tidy.py*
+%{_datadir}/clang/run-find-all-symbols.py*
+%{_datadir}/clang/clang-rename.py*
+
+%files -n git-clang-format
+%{_bindir}/git-clang-format
+
+%files -n python2-clang
+%{python2_sitelib}/clang/
 
 %files -n git-clang-format
 %{_bindir}/git-clang-format
@@ -276,15 +327,57 @@ make %{?_smp_mflags} check || :
 %{python2_sitelib}/clang/
 
 %changelog
-* Tue Nov 14 2017 Jajauma's Packages <jajauma@yandex.ru> - 5.0.0-2
-- Synchronize package with Fedora
-- Workaround _pkgdocdir breakage in RHEL7.4
+* Mon Mar 12 2018 Tom Stellard <tstellar@redhat.com> - 6.0.0-2
+- Add Provides: clang(major) rhbz#1547444
 
-* Fri Sep 08 2017 Jajauma's Packages <jajauma@yandex.ru> - 5.0.0-1
-- Update to latest upstream release
+* Fri Mar 09 2018 Tom Stellard <tstellar@redhat.com> - 6.0.0-1
+- 6.0.0 Release
 
-* Tue Aug 22 2017 Jajauma's Packages <jajauma@yandex.ru> - 4.0.1-5
-- Build with python-sphinx on RHEL
+* Mon Feb 12 2018 Tom Stellard <tstellar@redhat.com> - 6.0.0-0.6.rc2
+- 6.0.0-rc2 Release
+
+* Wed Feb 07 2018 Fedora Release Engineering <releng@fedoraproject.org> - 6.0.0-0.5.rc1
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_28_Mass_Rebuild
+
+* Thu Feb 01 2018 Tom Stellard <tstellar@redhat.com> - 6.0.0-0.4.rc1
+- Package python helper scripts for tools
+
+* Fri Jan 26 2018 Tom Stellard <tstellar@redhat.com> - 6.0.0-0.3.rc1
+- Ignore -fstack-clash-protection option instead of giving an error
+
+* Fri Jan 26 2018 Tom Stellard <tstellar@redhat.com> - 6.0.0-0.2.rc1
+- Package emacs integration files
+
+* Wed Jan 24 2018 Tom Stellard <tstellar@redhat.com> - 6.0.0-0.1.rc1
+- 6.0.0-rc1 Release
+
+* Wed Jan 24 2018 Tom Stellard <tstellar@redhat.com> - 5.0.1-3
+- Rebuild against llvm5.0 compatibility package
+- rhbz#1538231
+
+* Wed Jan 03 2018 Iryna Shcherbina <ishcherb@redhat.com> - 5.0.1-2
+- Update Python 2 dependency declarations to new packaging standards
+  (See https://fedoraproject.org/wiki/FinalizingFedoraSwitchtoPython3)
+
+* Wed Dec 20 2017 Tom Stellard <tstellar@redhat.com> - 5.0.1-1
+- 5.0.1 Release
+
+* Wed Dec 13 2017 Tom Stellard <tstellar@redhat.com> - 5.0.0-3
+- Make compiler-rt a weak dependency and add a weak dependency on libomp
+
+* Mon Nov 06 2017 Merlin Mathesius <mmathesi@redhat.com> - 5.0.0-2
+- Cleanup spec file conditionals
+
+* Mon Oct 16 2017 Tom Stellard <tstellar@redhat.com> - 5.0.0-1
+- 5.0.0 Release
+
+* Wed Oct 04 2017 Rex Dieter <rdieter@fedoraproject.org> - 4.0.1-6
+- python2-clang subpkg (#1490997)
+- tools-extras: tighten (internal) -libs dep
+- %%install: avoid cd
+
+* Wed Aug 30 2017 Tom Stellard <tstellar@redhat.com> - 4.0.1-5
+- Add Requires: python for git-clang-format
 
 * Sun Aug 06 2017 Björn Esser <besser82@fedoraproject.org> - 4.0.1-4
 - Rebuilt for AutoReq cmake-filesystem

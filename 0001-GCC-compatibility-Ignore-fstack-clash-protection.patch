@@ -1,0 +1,42 @@
+From 428ca4520a79ec5a6df9c6adc8b8069623868cdb Mon Sep 17 00:00:00 2001
+From: Tom Stellard <tstellar@redhat.com>
+Date: Fri, 26 Jan 2018 11:38:04 -0800
+Subject: [PATCH] GCC compatibility: Ignore -fstack-clash-protection
+
+Reviewers: sylvestre.ledru
+
+Subscribers: cfe-commits
+
+Differential Revision: https://reviews.llvm.org/D42593
+---
+ include/clang/Driver/Options.td | 1 +
+ test/Driver/clang_f_opts.c      | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/include/clang/Driver/Options.td b/include/clang/Driver/Options.td
+index 41f31cf..e9078a2 100644
+--- a/include/clang/Driver/Options.td
++++ b/include/clang/Driver/Options.td
+@@ -2705,6 +2705,7 @@ defm single_precision_constant : BooleanFFlag<"single-precision-constant">,
+     Group<clang_ignored_gcc_optimization_f_Group>;
+ defm spec_constr_count : BooleanFFlag<"spec-constr-count">, Group<clang_ignored_f_Group>;
+ defm stack_check : BooleanFFlag<"stack-check">, Group<clang_ignored_f_Group>;
++defm stack_clash_protection : BooleanFFlag<"stack-clash-protection">, Group<clang_ignored_f_Group>;
+ defm strength_reduce :
+     BooleanFFlag<"strength-reduce">, Group<clang_ignored_gcc_optimization_f_Group>;
+ defm tls_model : BooleanFFlag<"tls-model">, Group<clang_ignored_f_Group>;
+diff --git a/test/Driver/clang_f_opts.c b/test/Driver/clang_f_opts.c
+index 5755c5d..8710ff4 100644
+--- a/test/Driver/clang_f_opts.c
++++ b/test/Driver/clang_f_opts.c
+@@ -284,6 +284,7 @@
+ // RUN:     -ffriend-injection                                                \
+ // RUN:     -fno-implement-inlines -fimplement-inlines                        \
+ // RUN:     -fstack-check                                                     \
++// RUN:     -fstack-clash-protection                                          \
+ // RUN:     -fforce-addr                                                      \
+ // RUN:     -malign-functions=100                                             \
+ // RUN:     -malign-loops=100                                                 \
+-- 
+1.8.3.1
+

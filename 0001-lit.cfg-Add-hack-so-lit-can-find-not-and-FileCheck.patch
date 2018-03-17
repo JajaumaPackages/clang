@@ -1,0 +1,27 @@
+From 06cde370a44393d65bae7f61279900b5838b4a2c Mon Sep 17 00:00:00 2001
+From: Tom Stellard <tstellar@redhat.com>
+Date: Tue, 23 Jan 2018 18:59:20 -0800
+Subject: [PATCH] lit.cfg: Add hack so lit can find not and FileCheck
+
+---
+ test/lit.cfg.py | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/test/lit.cfg.py b/test/lit.cfg.py
+index 5323cfe..5b4184e 100644
+--- a/test/lit.cfg.py
++++ b/test/lit.cfg.py
+@@ -39,7 +39,10 @@ config.test_source_root = os.path.dirname(__file__)
+ # test_exec_root: The root path where tests should be run.
+ config.test_exec_root = os.path.join(config.clang_obj_root, 'test')
+ 
++old_llvm_tools_dir = llvm_config.config.llvm_tools_dir
++llvm_config.config.llvm_tools_dir = '/usr/lib@FEDORA_LLVM_LIB_SUFFIX@/llvm'
+ llvm_config.use_default_substitutions()
++llvm_config.config.llvm_tools_dir = old_llvm_tools_dir
+ 
+ llvm_config.use_clang()
+ 
+-- 
+1.8.3.1
+
